@@ -4,7 +4,7 @@
 
 `hello-world-webui-fast` is a minimal Rust + TypeScript application that server-renders a single FAST 3 custom element displaying `Hello world`.
 
-The Rust side is a small Axum HTTP server. At startup, it uses `microsoft-webui` 0.0.12, whose library name is `webui`, to compile `app/src/index.html` and component templates into a `WebUIProtocol`. The build uses `Plugin::FastV3`, which selects the FAST 3 parser plugin.
+The Rust side is a small actix-web HTTP server. At startup, it uses `microsoft-webui` 0.0.12, whose library name is `webui`, to compile `app/src/index.html` and component templates into a `WebUIProtocol`. The build uses `Plugin::FastV3`, which selects the FAST 3 parser plugin.
 
 The TypeScript side defines a single FAST Element component, `<hello-world>`, using `@microsoft/fast-element@3.0.0-rc.1`. The component template is authored in WebUI declarative syntax and transformed by the `fast-v3` parser and hydration plugins into FAST 3-compatible `<f-template>` markup with hydration markers such as `<!--fe:b-->`, `<!--fe:/b-->`, and `data-fe="N"`.
 
@@ -18,7 +18,7 @@ hello-world-webui-fast/
 ├── Cargo.toml                         # workspace root, members = ["server"]
 ├── server/
 │   ├── Cargo.toml                     # binary "hello-world-webui-fast-server"
-│   └── src/main.rs                    # axum entrypoint
+│   └── src/main.rs                    # actix-web entrypoint
 ├── app/
 │   ├── package.json                   # @microsoft/fast-element@3.0.0-rc.1 + esbuild
 │   ├── tsconfig.json
@@ -34,7 +34,7 @@ hello-world-webui-fast/
 
 Important paths:
 
-- `server/src/main.rs` contains the Axum server, startup build step, request handler, and `StringWriter` implementation.
+- `server/src/main.rs` contains the actix-web server, startup build step, request handlers, and `StringWriter` implementation.
 - `app/src/index.html` is the server-rendered entry document and hosts `<hello-world greeting="{{greeting}}"></hello-world>`.
 - `app/src/index.ts` enables FAST hydration and dynamically imports the component definition.
 - `app/src/hello-world/hello-world.ts` defines the `HelloWorld` FAST element with an `@attr greeting` property and `declarativeTemplate()`.
@@ -43,7 +43,7 @@ Important paths:
 
 ## Rust Architecture
 
-The server is a single Axum binary named `hello-world-webui-fast-server`, defined under `server/` and launched with `cargo run` from that directory.
+The server is a single actix-web binary named `hello-world-webui-fast-server`, defined under `server/` and launched with `cargo run` from that directory.
 
 At startup, `server/src/main.rs` calls `webui::build` to compile the WebUI entry document and component templates into a `WebUIProtocol`. The relevant API surface from `microsoft-webui` 0.0.12 is:
 
@@ -83,7 +83,7 @@ use webui_handler::plugin::fast_v3::FastV3HydrationPlugin;
 let handler = WebUIHandler::with_plugin(|| Box::new(FastV3HydrationPlugin::new()));
 ```
 
-The server implements the `webui_handler::ResponseWriter` trait with a `StringWriter` so rendered HTML can be captured into a `String` and returned from the Axum route as `text/html; charset=utf-8`.
+The server implements the `webui_handler::ResponseWriter` trait with a `StringWriter` so rendered HTML can be captured into a `String` and returned from the actix-web handler as `text/html; charset=utf-8`.
 
 ## TypeScript Architecture
 
@@ -134,40 +134,43 @@ The template is authored in WebUI declarative syntax, not directly in FAST's fin
 
 ## Web Layer
 
-The HTTP layer uses Axum 0.8.
+The HTTP layer uses actix-web 4. actix-web is what the upstream WebUI repository itself uses (it is a workspace dependency in the WebUI project, and every example server under `examples/` uses actix-web), so the server code stays close to the WebUI house style.
 
-There is one dynamic route:
+There are two routes:
 
-- `GET /` → `render_root`
+- `GET /` → `render_root` (server-rendered HTML)
+- `GET /dist/index.js` → `serve_index_js` (the bundled browser module)
 
-The route handler:
+The HTML route handler:
 
-1. Receives `State<AppState>`.
+1. Receives `web::Data<AppState>`.
 2. Creates a `StringWriter`.
 3. Constructs a per-request `WebUIHandler` with `FastV3HydrationPlugin`.
 4. Calls `handler.handle(...)` with the compiled `WebUIProtocol`, render state, `RenderOptions`, and writer.
 5. Returns the resulting HTML buffer as `text/html; charset=utf-8`.
 
-Static client assets are served from `app/dist/` using `tower_http::services::ServeDir`, mounted at `/dist`. The bundled browser module is loaded as `/dist/index.js`.
+The `index.js` bundle is read from `app/dist/index.js` once at startup, stored as an `actix_web::web::Bytes` in `AppState`, and cloned cheaply into responses (the same pre-load pattern used by `commerce/server/src/frontend.rs` upstream). This avoids a `tower-http` dependency and keeps the static-asset path inline with the WebUI house style.
 
 A representative route flow looks like:
 
 ```rust
-use axum::{extract::State, response::Html};
-use webui::WebUIHandler;
-use webui_handler::{RenderOptions, ResponseWriter};
+use actix_web::{web, HttpResponse};
+use webui::{ResponseWriter, WebUIHandler};
+use webui_handler::RenderOptions;
 use webui_handler::plugin::fast_v3::FastV3HydrationPlugin;
 
-async fn render_root(State(state): State<AppState>) -> Html<String> {
+async fn render_root(state: web::Data<AppState>) -> HttpResponse {
     let mut writer = StringWriter::default();
     let options = RenderOptions::new("index.html", "/");
     let handler = WebUIHandler::with_plugin(|| Box::new(FastV3HydrationPlugin::new()));
 
-    handler
-        .handle(&state.protocol, &state.render_state, &options, &mut writer)
-        .expect("render root document");
+    if let Err(err) = handler.handle(&state.protocol, &state.render_state, &options, &mut writer) {
+        return HttpResponse::InternalServerError().body(format!("render failed: {err}"));
+    }
 
-    Html(writer.into_string())
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(writer.into_string())
 }
 ```
 
@@ -211,7 +214,7 @@ The build pipeline has three stages: install client dependencies, bundle the bro
 
 Every request to `GET /` follows the same render path.
 
-1. Axum dispatches the request to `render_root`.
+1. actix-web dispatches the request to `render_root`.
 2. `render_root` creates a new `StringWriter`.
 3. The handler is constructed with the FAST 3 hydration plugin:
 
@@ -299,9 +302,11 @@ The component template in `app/src/hello-world/hello-world.html` is intentionall
 
 This keeps the source template framework-neutral at authoring time. The `FastV3ParserPlugin` performs the FAST-specific conversion, including support for transforming WebUI directives such as `<if>` and `<for>` into FAST 3 `<f-when>` and `<f-repeat>` markup.
 
-### Axum
+### actix-web
 
-Axum is a good fit because the WebUI Rust handler documentation includes an Axum example, and Axum 0.8 keeps the server small. It also integrates cleanly with `tower-http`'s `ServeDir` for serving `app/dist/index.js`.
+actix-web is the framework the upstream WebUI project itself uses — it is in WebUI's workspace `[workspace.dependencies]` and is the framework chosen by every example server (`examples/integration/ssr-performance-showdown`, `examples/app/commerce/server`, `examples/app/contact-book-manager/server`, `examples/app/routes/server`, `examples/demo/server`). Picking actix-web here keeps the dependency graph aligned with WebUI's own ecosystem and avoids pulling in a parallel HTTP framework like axum plus its tower middleware stack.
+
+For this minimal example the server doesn't need static-file serving abstractions like `tower-http::ServeDir`. The single `index.js` asset is read once at startup, stored as `actix_web::web::Bytes`, and served with a tiny inline handler — exactly how `commerce/server/src/frontend.rs` caches its assets.
 
 ### esbuild
 
@@ -317,7 +322,7 @@ The project uses esbuild because WebUI examples such as `hello-world` and `todo-
 Browser GET /
         │
         ▼
-axum router → render_root(State<AppState>)
+actix-web router → render_root(web::Data<AppState>)
         │
         ▼
 WebUIHandler::with_plugin(FastV3HydrationPlugin::new())
@@ -347,7 +352,7 @@ FAST hydrates existing shadow DOM via fe:b / data-fe markers (no DOM rebuild)
 The project demonstrates the smallest useful integration between Rust server rendering and FAST 3 client hydration:
 
 - Rust compiles WebUI declarative templates with `Plugin::FastV3`.
-- Axum serves the rendered HTML and bundled ESM client.
+- actix-web serves the rendered HTML and the pre-loaded ESM client bundle.
 - `FastV3HydrationPlugin` emits FAST 3-compatible hydration markers.
 - The browser loads `enableHydration()` before registering `<hello-world>`.
 - `declarativeTemplate()` connects the server-emitted `<f-template name="hello-world">` to the FAST element definition.

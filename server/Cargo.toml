@@ -11,9 +11,6 @@ path = "src/main.rs"
 [dependencies]
 microsoft-webui = "0.0.12"
 microsoft-webui-handler = "0.0.12"
-axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+actix-web = "4"
 serde_json = "1"
 anyhow = "1"
-mime_guess = "2"
-tower-http = { version = "0.6", features = ["fs"] }

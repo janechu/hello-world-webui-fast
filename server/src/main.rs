@@ -1,35 +1,32 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//! Minimal axum server that renders a FAST 3 component using the WebUI
-//! `fast-v3` parser + hydration plugins.
+//! Minimal actix-web server that renders a FAST 3 component using the
+//! WebUI `fast-v3` parser + hydration plugins.
 //!
-//! At startup it builds the WebUI protocol from `../app/src` and reads the
-//! initial state from `../app/data/state.json`. On each GET request it
-//! renders HTML with `FastV3HydrationPlugin`. The bundled client script
-//! lives at `../app/dist/index.js` and is served as a static file.
+//! At startup it builds the WebUI protocol from `../app/src`, reads the
+//! initial state from `../app/data/state.json`, and pre-loads the bundled
+//! client script `../app/dist/index.js` into memory. On each GET request
+//! it renders HTML with `FastV3HydrationPlugin`.
 
-use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use actix_web::web::Bytes;
+use actix_web::{web, App, HttpResponse, HttpServer};
 use anyhow::{Context, Result};
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::Router;
 use serde_json::Value;
-use tower_http::services::ServeDir;
-use webui::{build, BuildOptions, CssStrategy, DomStrategy, Plugin, WebUIProtocol};
+use webui::{
+    build, BuildOptions, CssStrategy, DomStrategy, Plugin, ResponseWriter, WebUIHandler,
+    WebUIProtocol,
+};
 use webui_handler::plugin::fast_v3::FastV3HydrationPlugin;
-use webui_handler::{RenderOptions, ResponseWriter, WebUIHandler};
+use webui_handler::RenderOptions;
 
-/// Shared application state held by axum.
+/// Shared application state injected into actix handlers.
 struct AppState {
     protocol: WebUIProtocol,
     state: Value,
+    index_js: Bytes,
 }
 
 /// In-memory `ResponseWriter` that accumulates rendered HTML into a `String`.
@@ -46,17 +43,33 @@ impl ResponseWriter for StringWriter {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn render_root(state: web::Data<AppState>) -> HttpResponse {
+    let mut writer = StringWriter(String::with_capacity(4096));
+    let handler = WebUIHandler::with_plugin(|| Box::new(FastV3HydrationPlugin::new()));
+    let opts = RenderOptions::new("index.html", "/");
+    if let Err(err) = handler.handle(&state.protocol, &state.state, &opts, &mut writer) {
+        return HttpResponse::InternalServerError().body(format!("render failed: {err}"));
+    }
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(writer.0)
+}
+
+async fn serve_index_js(state: web::Data<AppState>) -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(state.index_js.clone())
+}
+
+fn main() -> Result<()> {
     let app_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .context("workspace root not found")?
         .join("app");
     let src_dir = app_dir.join("src");
     let state_path = app_dir.join("data").join("state.json");
-    let dist_dir = app_dir.join("dist");
+    let index_js_path = app_dir.join("dist").join("index.js");
 
-    // Build the protocol once with the fast-v3 parser plugin.
     let result = build(BuildOptions {
         app_dir: src_dir,
         entry: "index.html".to_string(),
@@ -67,43 +80,39 @@ async fn main() -> Result<()> {
     })
     .context("Failed to build WebUI protocol with fast-v3 plugin")?;
 
-    // Load the initial state JSON.
     let state_bytes = std::fs::read(&state_path)
         .with_context(|| format!("Failed to read {}", state_path.display()))?;
     let state: Value =
         serde_json::from_slice(&state_bytes).context("Failed to parse state.json")?;
 
-    let app_state = Arc::new(AppState {
+    let index_js = std::fs::read(&index_js_path).with_context(|| {
+        format!(
+            "Failed to read {}. Did you run `npm run build` in app/?",
+            index_js_path.display()
+        )
+    })?;
+
+    let app_state = web::Data::new(AppState {
         protocol: result.protocol,
         state,
+        index_js: Bytes::from(index_js),
     });
 
-    let app = Router::new()
-        .route("/", get(render_root))
-        .nest_service("/dist", ServeDir::new(dist_dir))
-        .with_state(app_state);
+    println!("Listening on http://127.0.0.1:3000");
 
-    let addr: SocketAddr = "127.0.0.1:3000".parse()?;
-    println!("Listening on http://{addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    actix_web::rt::System::new().block_on(async move {
+        HttpServer::new(move || {
+            App::new()
+                .app_data(app_state.clone())
+                .route("/", web::get().to(render_root))
+                .route("/dist/index.js", web::get().to(serve_index_js))
+        })
+        .bind("127.0.0.1:3000")
+        .context("Failed to bind 127.0.0.1:3000")?
+        .run()
+        .await
+        .context("Server error")
+    })?;
+
     Ok(())
-}
-
-async fn render_root(State(app): State<Arc<AppState>>) -> Response {
-    let mut writer = StringWriter(String::with_capacity(4096));
-    let handler = WebUIHandler::with_plugin(|| Box::new(FastV3HydrationPlugin::new()));
-    let opts = RenderOptions::new("index.html", "/");
-    if let Err(err) = handler.handle(&app.protocol, &app.state, &opts, &mut writer) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("render failed: {err}"),
-        )
-            .into_response();
-    }
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(Body::from(writer.0))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }

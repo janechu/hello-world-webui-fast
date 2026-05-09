@@ -31,7 +31,7 @@ hello-world-webui-fast/
 ├── Cargo.toml                         # workspace root, members = ["server"]
 ├── server/
 │   ├── Cargo.toml                     # binary "hello-world-webui-fast-server"
-│   └── src/main.rs                    # axum entrypoint, port 3000
+│   └── src/main.rs                    # actix-web entrypoint, port 3000
 ├── app/
 │   ├── package.json                   # @microsoft/fast-element@3.0.0-rc.1 + esbuild
 │   ├── tsconfig.json                  # TypeScript compiler settings
@@ -48,7 +48,7 @@ hello-world-webui-fast/
 
 ## How it works (short version)
 
-The Rust server loads the app template and state, builds the WebUI protocol once at startup, and serves the rendered page through axum. WebUI processes the declarative template, and the `fast-v3` plugin emits FAST-compatible `<f-template>` markup and hydration metadata. The browser loads the bundled TypeScript, enables FAST hydration, and registers the `<hello-world>` element with `declarativeTemplate()`. FAST then hydrates the pre-rendered shadow DOM instead of rebuilding it. See [DESIGN.md](./DESIGN.md) for the full architecture breakdown.
+The Rust server loads the app template and state, builds the WebUI protocol once at startup, and serves the rendered page through actix-web (the same framework the upstream WebUI examples use). WebUI processes the declarative template, and the `fast-v3` plugin emits FAST-compatible `<f-template>` markup and hydration metadata. The browser loads the bundled TypeScript, enables FAST hydration, and registers the `<hello-world>` element with `declarativeTemplate()`. FAST then hydrates the pre-rendered shadow DOM instead of rebuilding it. See [DESIGN.md](./DESIGN.md) for the full architecture breakdown.
 
 ## Development tips
 
