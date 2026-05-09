@@ -14,6 +14,8 @@ At request time, the server walks the compiled protocol with `WebUIHandler` and 
 
 ```text
 hello-world-webui-fast/
+├── .github/
+│   └── workflows/ci.yml               # CI: build + Playwright tests
 ├── .gitignore
 ├── Cargo.toml                         # workspace root, members = ["server"]
 ├── server/
@@ -27,8 +29,12 @@ hello-world-webui-fast/
 │       ├── index.html                 # <hello-world greeting="{{greeting}}"></hello-world>
 │       ├── index.ts                   # enableHydration + dynamic import of component
 │       └── hello-world/
-│           ├── hello-world.ts         # FASTElement w/ @attr greeting + declarativeTemplate()
-│           └── hello-world.html       # <template shadowrootmode="open"><h1>{{greeting}}</h1></template>
+│           ├── hello-world.ts         # FASTElement w/ @attr greeting + handleButtonPress()
+│           └── hello-world.html       # <h1>{{greeting}}</h1> + <button @click="{...}">
+├── tests/
+│   ├── package.json                   # @playwright/test
+│   ├── playwright.config.ts           # webServer launches `cargo run`
+│   └── hello-world.spec.ts            # end-to-end tests
 └── README.md
 ```
 
@@ -37,9 +43,11 @@ Important paths:
 - `server/src/main.rs` contains the actix-web server, startup build step, request handlers, and `StringWriter` implementation.
 - `app/src/index.html` is the server-rendered entry document and hosts `<hello-world greeting="{{greeting}}"></hello-world>`.
 - `app/src/index.ts` enables FAST hydration and dynamically imports the component definition.
-- `app/src/hello-world/hello-world.ts` defines the `HelloWorld` FAST element with an `@attr greeting` property and `declarativeTemplate()`.
-- `app/src/hello-world/hello-world.html` contains the WebUI declarative template for the component shadow DOM.
+- `app/src/hello-world/hello-world.ts` defines the `HelloWorld` FAST element with an `@attr greeting` property and a `handleButtonPress()` method that calls `alert("button pressed!")`. Registration happens via `HelloWorld.define({ name, template: declarativeTemplate() })`.
+- `app/src/hello-world/hello-world.html` contains the WebUI declarative template for the component shadow DOM, including a content binding (`{{greeting}}`) and an event binding (`@click="{handleButtonPress()}"`).
 - `app/data/state.json` provides the render state: `{ "greeting": "Hello world" }`.
+- `tests/` contains a Playwright suite that drives a real Chromium browser against `cargo run`. See [Testing](#testing).
+- `.github/workflows/ci.yml` builds the project and runs the Playwright suite on every push to `main` and every pull request. See [Continuous Integration](#continuous-integration).
 
 ## Rust Architecture
 
@@ -99,23 +107,28 @@ Conceptually, `app/src/index.ts` performs:
 ```ts
 import { enableHydration } from "@microsoft/fast-element/hydration.js";
 
-await enableHydration();
-await import("./hello-world/hello-world.js");
+enableHydration();
+void import("./hello-world/hello-world.js");
 ```
 
-The component definition uses FAST Element and `declarativeTemplate()`:
+The component definition uses FAST Element with `declarativeTemplate()` from `@microsoft/fast-element/declarative.js` and registers via the static `define()` method:
 
 ```ts
-import { FASTElement, attr, customElement } from "@microsoft/fast-element";
-import { declarativeTemplate } from "@microsoft/fast-element/hydration.js";
+import { attr, FASTElement } from "@microsoft/fast-element";
+import { declarativeTemplate } from "@microsoft/fast-element/declarative.js";
 
-@customElement({
-  name: "hello-world",
-  template: declarativeTemplate(),
-})
 export class HelloWorld extends FASTElement {
-  @attr greeting = "";
+    @attr greeting: string = "Hello world";
+
+    handleButtonPress(): void {
+        alert("button pressed!");
+    }
 }
+
+void HelloWorld.define({
+    name: "hello-world",
+    template: declarativeTemplate(),
+});
 ```
 
 The template is authored in WebUI declarative syntax, not directly in FAST's final `<f-template>` form:
@@ -123,14 +136,16 @@ The template is authored in WebUI declarative syntax, not directly in FAST's fin
 ```html
 <template shadowrootmode="open">
   <h1>{{greeting}}</h1>
+  <button @click="{handleButtonPress()}">Press me</button>
 </template>
 ```
 
-`FastV3ParserPlugin` converts WebUI declarative syntax into FAST 3 template syntax. In this minimal project there are no `<if>` or `<for>` directives, but the same pipeline would convert:
+`FastV3ParserPlugin` converts WebUI declarative syntax into FAST 3 template syntax. In this minimal project there are no `<if>` or `<for>` directives, but the same pipeline supports:
 
 - `<if condition="...">` into `<f-when>`
 - `<for each="...">` into `<f-repeat>`
-- `{{...}}` bindings into FAST-compatible template bindings and hydration markers
+- `{{...}}` content / attribute bindings → FAST template bindings + hydration markers (`<!--fe:b-->`, `data-fe="N"`)
+- `@event="{handler()}"` event bindings (single curly braces, client-only) → FAST event bindings; the server strips the inline expression from the rendered HTML but allocates a hydration slot on the element via `data-fe="N"`
 
 ## Web Layer
 
@@ -240,28 +255,39 @@ While walking protocol fragments, `FastV3HydrationPlugin` emits FAST 3 hydration
 - Content bindings such as `{{greeting}}` are resolved against `app/data/state.json` and wrapped with `<!--fe:b-->` and `<!--fe:/b-->` markers.
 - At `</body>`, an artifact emitted earlier by the parser plugin injects an `<f-template name="hello-world">` block containing the FAST-converted component template.
 
-For this project, the rendered component template is minimal. Because `app/src/hello-world/hello-world.html` contains only a content binding, the emitted FAST template is conceptually:
+For this project, the rendered component template includes a content binding and an event binding. Conceptually, the emitted FAST template is:
 
 ```html
 <f-template name="hello-world">
   <template>
-    <h1><!--fe:b-->Hello world<!--fe:/b--></h1>
+    <h1>{{greeting}}</h1>
+    <button @click="{handleButtonPress()}">Press me</button>
   </template>
 </f-template>
 ```
 
 The complete response contains:
 
-- The host element from `app/src/index.html`:
+- The host element from `app/src/index.html` with the resolved attribute:
 
   ```html
-  <hello-world greeting="Hello world" data-fe="1"></hello-world>
+  <hello-world greeting="Hello world">…</hello-world>
   ```
 
-- Declarative shadow DOM for the component.
-- FAST 3 hydration markers in the shadow DOM.
-- The `<f-template name="hello-world">` artifact before `</body>`.
-- A script reference to `/dist/index.js`.
+- Declarative shadow DOM for the component, with FAST 3 hydration markers:
+
+  ```html
+  <template shadowrootmode="open">
+    <h1><!--fe:b-->Hello world<!--fe:/b--></h1>
+    <button data-fe="1">Press me</button>
+  </template>
+  ```
+
+  `data-fe="1"` on the `<button>` reserves a single binding slot for the client-only `@click` handler — the inline `{handleButtonPress()}` expression is stripped from the rendered HTML.
+
+- The `<f-template name="hello-world">` artifact before `</body>` (with the `@click` expression preserved so the browser can wire up the handler).
+- A `window.__webui` script element carrying the inventory and the JSON state.
+- A `<script type="module" src="/dist/index.js">` reference.
 
 ## Hydration Pipeline
 
@@ -275,12 +301,59 @@ Hydration is performed in the browser by FAST Element 3.
 6. FAST parses the `<f-template>` into a `ViewTemplate` and associates it with the `<hello-world>` definition.
 7. FAST walks the existing declarative shadow DOM and locates:
    - `<!--fe:b-->` and `<!--fe:/b-->` content markers.
-   - `data-fe="N"` attribute binding counters.
-8. FAST re-attaches reactive bindings to the existing nodes without creating duplicate DOM.
+   - `data-fe="N"` attribute binding counters (e.g. on the `<button>` for the `@click` handler).
+8. FAST re-attaches reactive bindings to the existing nodes without creating duplicate DOM. The `@click` handler on the `<button>` is wired up to `HelloWorld.handleButtonPress`, which calls `alert("button pressed!")`.
 9. `$fastController.isPrerendered` resolves to `true`.
 10. Later property changes, such as `helloWorld.greeting = "Hi"`, update only the marker-bound text node.
 
 The key property of this pipeline is that the server-rendered DOM becomes the live FAST view. The client runtime hydrates it instead of replacing it.
+
+## Testing
+
+End-to-end tests live in `tests/` and use [Playwright](https://playwright.dev/). The suite drives a real Chromium browser against the actual Rust server, so it exercises the full pipeline — server-side rendering → declarative shadow DOM → client bundle → `enableHydration()` → `declarativeTemplate()` → FAST event-binding wire-up — exactly as a user would experience it.
+
+### Configuration
+
+`tests/playwright.config.ts` declares a `webServer` block that launches `cargo run --quiet` in `../server/` and waits for `http://127.0.0.1:3000/` before any test runs. Locally, `reuseExistingServer` is on so iteration is fast; in CI it is off so each run gets a clean server. The base URL is set so tests can use relative paths (e.g. `page.goto("/")`).
+
+The Chromium project from `devices["Desktop Chrome"]` is the only browser configured. Under CI (`process.env.CI`), the config switches to a single worker, two retries, and the `github` + `html` reporters.
+
+### Tests
+
+`tests/hello-world.spec.ts` contains two tests:
+
+1. **Greeting reflects `state.json`.** The spec reads `app/data/state.json` synchronously at load time, navigates to `/`, and asserts that the `<h1>` inside the `<hello-world>` declarative shadow DOM has text equal to `state.greeting`. Playwright's selectors pierce shadow DOM, so `page.locator("hello-world h1")` finds the text whether the shadow root is open or not.
+2. **Button click fires the alert.** The spec subscribes a `page.on("dialog")` listener that records the message and dismisses the dialog. It then waits for `customElements.get("hello-world")` to be defined and yields two `requestAnimationFrame` ticks so FAST hydration has wired the `@click` handler. Finally it clicks `hello-world button` and uses `expect.poll` to assert the most recent recorded dialog message equals `"button pressed!"`.
+
+The waitForFunction + double-RAF pattern is necessary because the click handler is set up only after the dynamic import resolves and FAST hydration walks the `data-fe="1"` slot on the `<button>`. Clicking before that point would fall on a plain `<button>` with no listener.
+
+### Running locally
+
+```sh
+cd app && npm install && npm run build
+cd ../tests && npm install
+npx playwright install chromium
+npx playwright test
+```
+
+`npx playwright show-report` opens the HTML report.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, and on manual `workflow_dispatch`. It is a single `ubuntu-latest` job called `build-and-test` with these steps:
+
+1. **Checkout** (`actions/checkout@v4`).
+2. **Set up Node.js** 20 (`actions/setup-node@v4`).
+3. **Set up Rust toolchain** stable (`dtolnay/rust-toolchain@stable`).
+4. **Cache the cargo build** (`Swatinem/rust-cache@v2`, scoped to the `server -> target` workspace).
+5. **`npm install`** in `app/`, then **`npm run build`** to produce `app/dist/index.js`.
+6. **`cargo build`** in `server/` to compile the binary ahead of test runs.
+7. **`npm install`** in `tests/`.
+8. **`npx playwright install --with-deps chromium`** in `tests/`.
+9. **`npx playwright test`** in `tests/` with `CI=true` set, which activates the retry / single-worker / GitHub reporter behavior in `playwright.config.ts`.
+10. **Upload the Playwright HTML report** (`actions/upload-artifact@v4`) from `tests/playwright-report/` whenever the job is not cancelled. The artifact is retained for 14 days.
+
+The Playwright `webServer` block in the config is what actually runs the Rust binary during the test step, so there is no separate "start server" step in the workflow.
 
 ## Design Choices
 
@@ -349,13 +422,14 @@ FAST hydrates existing shadow DOM via fe:b / data-fe markers (no DOM rebuild)
 
 ## End-to-End Summary
 
-The project demonstrates the smallest useful integration between Rust server rendering and FAST 3 client hydration:
+The project demonstrates a small but complete integration between Rust server rendering and FAST 3 client hydration:
 
 - Rust compiles WebUI declarative templates with `Plugin::FastV3`.
 - actix-web serves the rendered HTML and the pre-loaded ESM client bundle.
-- `FastV3HydrationPlugin` emits FAST 3-compatible hydration markers.
+- `FastV3HydrationPlugin` emits FAST 3-compatible hydration markers, including `data-fe="N"` slots on elements with client-only event bindings.
 - The browser loads `enableHydration()` before registering `<hello-world>`.
 - `declarativeTemplate()` connects the server-emitted `<f-template name="hello-world">` to the FAST element definition.
-- FAST reuses the server-rendered declarative shadow DOM and re-attaches bindings in place.
+- FAST reuses the server-rendered declarative shadow DOM and re-attaches bindings in place — including wiring the `@click` handler on the `<button>` to `handleButtonPress()`, which calls `alert("button pressed!")`.
+- A Playwright suite under `tests/` and a GitHub Actions workflow under `.github/workflows/ci.yml` run the full pipeline end-to-end on every change.
 
-The result is a minimal server-rendered custom element that displays `Hello world` immediately in the HTML response and becomes reactive once the FAST 3 runtime hydrates it in the browser.
+The result is a minimal server-rendered custom element that displays `Hello world` and an interactive **Press me** button immediately in the HTML response, and becomes reactive once the FAST 3 runtime hydrates it in the browser.
