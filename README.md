@@ -1,5 +1,7 @@
 # Hello World WebUI FAST
 
+[![CI](https://github.com/janechu/hello-world-webui-fast/actions/workflows/ci.yml/badge.svg)](https://github.com/janechu/hello-world-webui-fast/actions/workflows/ci.yml)
+
 This project is a minimal Rust + TypeScript example that uses the `microsoft-webui` 0.0.12 Rust crate to server-render one FAST 3 custom element. The element template is authored in WebUI declarative syntax (`{{...}}` content bindings, `<for>` / `<if>`), transformed by the `fast-v3` plugin into FAST 3 `<f-template>` markup with hydration markers, and hydrated on the client with `@microsoft/fast-element@3.0.0-rc.1`, `enableHydration()`, and `declarativeTemplate()`.
 
 ## Prerequisites
