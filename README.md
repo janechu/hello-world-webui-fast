@@ -28,6 +28,7 @@ Use view-source to inspect the server-rendered output. You should see FAST 3 hyd
 
 ```text
 hello-world-webui-fast/
+├── .github/workflows/ci.yml           # GitHub Actions: build + Playwright
 ├── Cargo.toml                         # workspace root, members = ["server"]
 ├── server/
 │   ├── Cargo.toml                     # binary "hello-world-webui-fast-server"
@@ -42,6 +43,10 @@ hello-world-webui-fast/
 │       └── hello-world/
 │           ├── hello-world.ts         # custom element definition
 │           └── hello-world.html       # WebUI declarative template
+├── tests/
+│   ├── package.json                   # @playwright/test
+│   ├── playwright.config.ts           # webServer launches `cargo run`
+│   └── hello-world.spec.ts            # end-to-end tests
 ├── DESIGN.md                          # architecture deep-dive
 └── README.md                          # getting-started guide
 ```
@@ -55,6 +60,36 @@ The Rust server loads the app template and state, builds the WebUI protocol once
 - Re-run `npm run build` in `app/` after editing any `.ts` file.
 - Restart `cargo run` after editing any `.rs` file or any HTML/state file under `app/src` or `app/data`; the protocol is built once at startup.
 - Run `RUST_BACKTRACE=1 cargo run` to see Rust panic backtraces.
+
+## Testing
+
+End-to-end tests live in `tests/` and use [Playwright](https://playwright.dev/). The Playwright config has a `webServer` block that launches `cargo run` in `server/` automatically before the tests run.
+
+First time setup:
+
+```bash
+cd app && npm install && npm run build
+cd ../tests && npm install
+npx playwright install chromium
+```
+
+Run the tests:
+
+```bash
+cd tests
+npx playwright test
+```
+
+The tests:
+
+1. Verify that the rendered `<hello-world>` element shows the greeting from `app/data/state.json`.
+2. Click the **Press me** button and assert the resulting `alert` says `button pressed!`.
+
+Playwright's HTML report is written to `tests/playwright-report/`. View it with `npx playwright show-report` from `tests/`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request. It installs Node and Rust toolchains, caches the cargo build, builds the client bundle and Rust server, installs Playwright (with its Chromium browser), and runs the tests. The Playwright HTML report is uploaded as a workflow artifact.
 
 ## Troubleshooting
 

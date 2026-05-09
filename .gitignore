@@ -3,3 +3,7 @@ node_modules/
 app/dist/
 Cargo.lock
 package-lock.json
+tests/test-results/
+tests/playwright-report/
+tests/blob-report/
+tests/.playwright/
