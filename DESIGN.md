@@ -343,7 +343,7 @@ npx playwright test
 `.github/workflows/ci.yml` runs on every push to `main`, every pull request, and on manual `workflow_dispatch`. It is a single `ubuntu-latest` job called `build-and-test` with these steps:
 
 1. **Checkout** (`actions/checkout@v4`).
-2. **Set up Node.js** 20 (`actions/setup-node@v4`).
+2. **Set up Node.js** 22 (`actions/setup-node@v4`).
 3. **Set up Rust toolchain** stable (`dtolnay/rust-toolchain@stable`).
 4. **Cache the cargo build** (`Swatinem/rust-cache@v2`, scoped to the `server -> target` workspace).
 5. **`npm install`** in `app/`, then **`npm run build`** to produce `app/dist/index.js`.

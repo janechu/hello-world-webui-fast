@@ -148,7 +148,7 @@ For `<button @click="{handleButtonPress()}">Press me</button>` inside a componen
 `.github/workflows/ci.yml` is one `ubuntu-latest` job called `build-and-test`. Steps in order:
 
 1. `actions/checkout@v4`
-2. `actions/setup-node@v4` (Node 20)
+2. `actions/setup-node@v4` (Node 22)
 3. `dtolnay/rust-toolchain@stable`
 4. `Swatinem/rust-cache@v2` keyed on `server -> target`
 5. `npm install` + `npm run build` in `app/`

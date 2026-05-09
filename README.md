@@ -7,7 +7,7 @@ This project is a minimal Rust + TypeScript example that uses the `microsoft-web
 ## Prerequisites
 
 - Rust toolchain 1.93+ (matches the `microsoft-webui` 0.0.12 MSRV)
-- Node.js 20+
+- Node.js 22+
 - npm
 
 ## Setup and run
