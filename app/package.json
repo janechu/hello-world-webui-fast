@@ -1,0 +1,16 @@
+{
+  "name": "hello-world-webui-fast-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --sourcemap"
+  },
+  "dependencies": {
+    "@microsoft/fast-element": "3.0.0-rc.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}
