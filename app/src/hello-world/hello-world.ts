@@ -6,6 +6,10 @@ import { declarativeTemplate } from "@microsoft/fast-element/declarative.js";
 
 export class HelloWorld extends FASTElement {
     @attr greeting: string = "Hello world";
+
+    handleButtonPress(): void {
+        alert("button pressed!");
+    }
 }
 
 void HelloWorld.define({
