@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//! Minimal actix-web server that renders a FAST 3 component using the
+//! Minimal actix-web server that renders a FAST 3.x component using the
 //! WebUI `fast-v3` parser + hydration plugins.
 //!
 //! At startup it builds the WebUI protocol from `../app/src`, reads the

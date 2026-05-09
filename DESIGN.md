@@ -2,13 +2,13 @@
 
 ## Overview
 
-`hello-world-webui-fast` is a minimal Rust + TypeScript application that server-renders a single FAST 3 custom element displaying `Hello world`.
+`hello-world-webui-fast` is a minimal Rust + TypeScript application that server-renders a single FAST 3.x custom element displaying `Hello world`.
 
-The Rust side is a small actix-web HTTP server. At startup, it uses `microsoft-webui` 0.0.12, whose library name is `webui`, to compile `app/src/index.html` and component templates into a `WebUIProtocol`. The build uses `Plugin::FastV3`, which selects the FAST 3 parser plugin.
+The Rust side is a small actix-web HTTP server. At startup, it uses `microsoft-webui` 0.0.12, whose library name is `webui`, to compile `app/src/index.html` and component templates into a `WebUIProtocol`. The build uses `Plugin::FastV3`, which selects the FAST 3.x parser plugin.
 
-The TypeScript side defines a single FAST Element component, `<hello-world>`, using `@microsoft/fast-element@3.0.0-rc.1`. The component template is authored in WebUI declarative syntax and transformed by the `fast-v3` parser and hydration plugins into FAST 3-compatible `<f-template>` markup with hydration markers such as `<!--fe:b-->`, `<!--fe:/b-->`, and `data-fe="N"`.
+The TypeScript side defines a single FAST Element component, `<hello-world>`, using `@microsoft/fast-element@3.0.0-rc.1`. The component template is authored in WebUI declarative syntax and transformed by the `fast-v3` parser and hydration plugins into FAST 3.x-compatible `<f-template>` markup with hydration markers such as `<!--fe:b-->`, `<!--fe:/b-->`, and `data-fe="N"`.
 
-At request time, the server walks the compiled protocol with `WebUIHandler` and `FastV3HydrationPlugin`, producing HTML that includes declarative shadow DOM and FAST hydration markers. In the browser, `enableHydration()` and `declarativeTemplate()` allow FAST 3 to attach reactive bindings to the existing server-rendered DOM without rebuilding it.
+At request time, the server walks the compiled protocol with `WebUIHandler` and `FastV3HydrationPlugin`, producing HTML that includes declarative shadow DOM and FAST hydration markers. In the browser, `enableHydration()` and `declarativeTemplate()` allow FAST 3.x to attach reactive bindings to the existing server-rendered DOM without rebuilding it.
 
 ## File Layout
 
@@ -140,7 +140,7 @@ The template is authored in WebUI declarative syntax, not directly in FAST's fin
 </template>
 ```
 
-`FastV3ParserPlugin` converts WebUI declarative syntax into FAST 3 template syntax. In this minimal project there are no `<if>` or `<for>` directives, but the same pipeline supports:
+`FastV3ParserPlugin` converts WebUI declarative syntax into FAST 3.x template syntax. In this minimal project there are no `<if>` or `<for>` directives, but the same pipeline supports:
 
 - `<if condition="...">` into `<f-when>`
 - `<for each="...">` into `<f-repeat>`
@@ -231,7 +231,7 @@ Every request to `GET /` follows the same render path.
 
 1. actix-web dispatches the request to `render_root`.
 2. `render_root` creates a new `StringWriter`.
-3. The handler is constructed with the FAST 3 hydration plugin:
+3. The handler is constructed with the FAST 3.x hydration plugin:
 
    ```rust
    let handler = WebUIHandler::with_plugin(|| Box::new(FastV3HydrationPlugin::new()));
@@ -249,7 +249,7 @@ Every request to `GET /` follows the same render path.
    handler.handle(&protocol, &state, &options, &mut writer)?;
    ```
 
-While walking protocol fragments, `FastV3HydrationPlugin` emits FAST 3 hydration markers:
+While walking protocol fragments, `FastV3HydrationPlugin` emits FAST 3.x hydration markers:
 
 - Attribute bindings on elements with bindings receive `data-fe="N"`, where `N` is the binding count.
 - Content bindings such as `{{greeting}}` are resolved against `app/data/state.json` and wrapped with `<!--fe:b-->` and `<!--fe:/b-->` markers.
@@ -274,7 +274,7 @@ The complete response contains:
   <hello-world greeting="Hello world">…</hello-world>
   ```
 
-- Declarative shadow DOM for the component, with FAST 3 hydration markers:
+- Declarative shadow DOM for the component, with FAST 3.x hydration markers:
 
   ```html
   <template shadowrootmode="open">
@@ -363,7 +363,7 @@ Version 0.0.12 is used because it is the first published release exposing `Plugi
 
 ### `@microsoft/fast-element@3.0.0-rc.1`
 
-`@microsoft/fast-element@3.0.0-rc.1` is the only published 3.x release of FAST Element on npm. It is the runtime targeted by `Plugin::FastV3`, which emits the compact FAST 3 hydration marker format using `fe:b` content markers and `data-fe="N"` attribute counters.
+`@microsoft/fast-element@3.0.0-rc.1` is the only published 3.x release of FAST Element on npm. It is the runtime targeted by `Plugin::FastV3`, which emits the compact FAST 3.x hydration marker format using `fe:b` content markers and `data-fe="N"` attribute counters.
 
 ### WebUI declarative syntax
 
@@ -373,7 +373,7 @@ The component template in `app/src/hello-world/hello-world.html` is intentionall
 <h1>{{greeting}}</h1>
 ```
 
-This keeps the source template framework-neutral at authoring time. The `FastV3ParserPlugin` performs the FAST-specific conversion, including support for transforming WebUI directives such as `<if>` and `<for>` into FAST 3 `<f-when>` and `<f-repeat>` markup.
+This keeps the source template framework-neutral at authoring time. The `FastV3ParserPlugin` performs the FAST-specific conversion, including support for transforming WebUI directives such as `<if>` and `<for>` into FAST 3.x `<f-when>` and `<f-repeat>` markup.
 
 ### actix-web
 
@@ -422,14 +422,14 @@ FAST hydrates existing shadow DOM via fe:b / data-fe markers (no DOM rebuild)
 
 ## End-to-End Summary
 
-The project demonstrates a small but complete integration between Rust server rendering and FAST 3 client hydration:
+The project demonstrates a small but complete integration between Rust server rendering and FAST 3.x client hydration:
 
 - Rust compiles WebUI declarative templates with `Plugin::FastV3`.
 - actix-web serves the rendered HTML and the pre-loaded ESM client bundle.
-- `FastV3HydrationPlugin` emits FAST 3-compatible hydration markers, including `data-fe="N"` slots on elements with client-only event bindings.
+- `FastV3HydrationPlugin` emits FAST 3.x-compatible hydration markers, including `data-fe="N"` slots on elements with client-only event bindings.
 - The browser loads `enableHydration()` before registering `<hello-world>`.
 - `declarativeTemplate()` connects the server-emitted `<f-template name="hello-world">` to the FAST element definition.
 - FAST reuses the server-rendered declarative shadow DOM and re-attaches bindings in place — including wiring the `@click` handler on the `<button>` to `handleButtonPress()`, which calls `alert("button pressed!")`.
 - A Playwright suite under `tests/` and a GitHub Actions workflow under `.github/workflows/ci.yml` run the full pipeline end-to-end on every change.
 
-The result is a minimal server-rendered custom element that displays `Hello world` and an interactive **Press me** button immediately in the HTML response, and becomes reactive once the FAST 3 runtime hydrates it in the browser.
+The result is a minimal server-rendered custom element that displays `Hello world` and an interactive **Press me** button immediately in the HTML response, and becomes reactive once the FAST 3.x runtime hydrates it in the browser.

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/janechu/hello-world-webui-fast/actions/workflows/ci.yml/badge.svg)](https://github.com/janechu/hello-world-webui-fast/actions/workflows/ci.yml)
 
-This project is a minimal Rust + TypeScript example that uses the `microsoft-webui` 0.0.12 Rust crate to server-render one FAST 3 custom element. The element template is authored in WebUI declarative syntax (`{{...}}` content bindings, `<for>` / `<if>`), transformed by the `fast-v3` plugin into FAST 3 `<f-template>` markup with hydration markers, and hydrated on the client with `@microsoft/fast-element@3.0.0-rc.1`, `enableHydration()`, and `declarativeTemplate()`.
+This project is a minimal Rust + TypeScript example that uses the `microsoft-webui` 0.0.12 Rust crate to server-render one FAST 3.x custom element. The element template is authored in WebUI declarative syntax (`{{...}}` content bindings, `<for>` / `<if>`), transformed by the `fast-v3` plugin into FAST 3.x `<f-template>` markup with hydration markers, and hydrated on the client with `@microsoft/fast-element@3.0.0-rc.1`, `enableHydration()`, and `declarativeTemplate()`.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ cargo run
 
 Open <http://127.0.0.1:3000/>. The page should display **"Hello world"** inside a `<hello-world>` custom element.
 
-Use view-source to inspect the server-rendered output. You should see FAST 3 hydration markers such as `<!--fe:b-->` and `data-fe="N"`, plus a server-injected `<f-template name="hello-world">` before `</body>`.
+Use view-source to inspect the server-rendered output. You should see FAST 3.x hydration markers such as `<!--fe:b-->` and `data-fe="N"`, plus a server-injected `<f-template name="hello-world">` before `</body>`.
 
 ## Project layout
 

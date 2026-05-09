@@ -4,7 +4,7 @@ This file gives Copilot the context it needs to be productive in this repository
 
 ## What this project is
 
-A minimal Rust + TypeScript demo that server-renders a single FAST 3 custom element (`<hello-world>`) using the [`microsoft-webui`](https://crates.io/crates/microsoft-webui) crate's `fast-v3` plugin pipeline. Every layer of the stack is intentionally as small as possible — its job is to demonstrate the smallest useful integration between Rust SSR and FAST 3 client hydration, not to be a starter template loaded with extras.
+A minimal Rust + TypeScript demo that server-renders a single FAST 3.x custom element (`<hello-world>`) using the [`microsoft-webui`](https://crates.io/crates/microsoft-webui) crate's `fast-v3` plugin pipeline. Every layer of the stack is intentionally as small as possible — its job is to demonstrate the smallest useful integration between Rust SSR and FAST 3.x client hydration, not to be a starter template loaded with extras.
 
 If you find yourself adding a dependency, a layer of abstraction, or a configuration knob, double-check that it is actually required by the requested change. Brevity is a feature here.
 
@@ -17,7 +17,7 @@ hello-world-webui-fast/
 ├── server/                            # actix-web binary (port 3000)
 │   ├── Cargo.toml
 │   └── src/main.rs
-├── app/                               # browser bundle (esbuild + FAST 3)
+├── app/                               # browser bundle (esbuild + FAST 3.x)
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── data/state.json                # render state passed to the protocol
@@ -42,7 +42,7 @@ hello-world-webui-fast/
 | Rust HTTP        | `actix-web = "4"`                       | The framework every WebUI example server uses; aligns with WebUI's house style.    |
 | WebUI            | `microsoft-webui = "0.0.12"`            | First published release exposing `Plugin::FastV3`. Do not downgrade.               |
 | WebUI handler    | `microsoft-webui-handler = "0.0.12"`    | Provides `RenderOptions` and `FastV3HydrationPlugin` (not re-exported by `webui`). |
-| FAST runtime     | `@microsoft/fast-element@3.0.0-rc.1`    | The only published FAST 3 release on npm. Targets the FAST 3 hydration format.     |
+| FAST runtime     | `@microsoft/fast-element@3.0.0-rc.1`    | The only published FAST 3.x release on npm. Targets the FAST 3.x hydration format.     |
 | Client bundler   | `esbuild ^0.25`                         | Matches WebUI examples (`hello-world`, `todo-fast`). Fast, single ESM bundle.      |
 | End-to-end tests | `@playwright/test ^1.59`                | Drives a real Chromium browser against `cargo run`.                                |
 
@@ -166,7 +166,7 @@ When adding new tests or new build steps, prefer extending this single job rathe
 - **Port 3000 already in use.** A leftover `cargo run` will block both manual smoke tests and Playwright's `webServer`. Use `lsof -nP -i tcp:3000 -sTCP:LISTEN -t | xargs kill -9` to free the port. Do not switch ports — both the server, `playwright.config.ts`, and the docs all assume 3000.
 - **Mixing up `declarative.js` and `hydration.js` imports.** `declarativeTemplate` lives in `@microsoft/fast-element/declarative.js`; `enableHydration` lives in `@microsoft/fast-element/hydration.js`. The TypeScript compiler will not catch a swap because both are valid module specifiers.
 - **Adding `axum`, `tokio`, `tower-http`, or `mime_guess`.** These were deliberately removed during the actix-web refactor (commit `13f45ac`). actix-web 4 supplies its own runtime and the static asset is a single pre-loaded `web::Bytes`. Do not re-introduce them without justification.
-- **Reaching for FAST 1.x or 2.x APIs.** This project targets FAST 3 (`@microsoft/fast-element@3.0.0-rc.1`). Tutorials and Stack Overflow answers about earlier versions often do not apply (e.g. `@customElement` decorator → `MyElement.define({...})`).
+- **Reaching for FAST 1.x or 2.x APIs.** This project targets FAST 3.x (`@microsoft/fast-element@3.0.0-rc.1`). Tutorials and Stack Overflow answers about earlier versions often do not apply (e.g. `@customElement` decorator → `MyElement.define({...})`).
 
 ## Adding a new component
 
